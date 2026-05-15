@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{% if reader %}编辑读者{% else %}添加读者{% endif %} - 图书管理系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-{% if reader %}pencil{% else %}plus-circle{% endif %}"></i>
+                    {% if reader %}编辑读者{% else %}添加读者{% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">姓名 <span class="text-danger">*</span></label>
+                        <input type="text" id="name" name="name" class="form-control" required
+                               value="{{ reader.name if reader else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">电话</label>
+                        <input type="text" id="phone" name="phone" class="form-control"
+                               value="{{ reader.phone if reader else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">邮箱</label>
+                        <input type="email" id="email" name="email" class="form-control"
+                               value="{{ reader.email if reader else '' }}">
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <a href="{{ url_for('reader_list') }}" class="btn btn-outline-secondary">取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
