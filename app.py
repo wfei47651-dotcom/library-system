@@ -1,7 +1,8 @@
 import os
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from models import db, Book, Reader, Borrow
+from functools import wraps
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from models import db, Book, Reader, Borrow, User
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -16,9 +17,81 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+# Auto-create tables on first run
+with app.app_context():
+    db.create_all()
+    # Create default admin account
+    if User.query.count() == 0:
+        admin = User(username='admin')
+        admin.set_password('admin123')
+        db.session.add(admin)
+        db.session.commit()
+    # Init sample data if database is empty
+    if Book.query.count() == 0:
+        from models import Reader
+        sample_books = [
+            Book(title='红楼梦', author='曹雪芹', isbn='978-7-02-000220-7',
+                 publisher='人民文学出版社', category='文学', total_quantity=5, available_quantity=5),
+            Book(title='三国演义', author='罗贯中', isbn='978-7-02-000221-4',
+                 publisher='人民文学出版社', category='文学', total_quantity=3, available_quantity=3),
+            Book(title='西游记', author='吴承恩', isbn='978-7-02-000222-1',
+                 publisher='人民文学出版社', category='文学', total_quantity=4, available_quantity=4),
+            Book(title='数据结构与算法', author='严蔚敏', isbn='978-7-302-14751-0',
+                 publisher='清华大学出版社', category='计算机', total_quantity=2, available_quantity=2),
+            Book(title='深入理解计算机系统', author='Randal E. Bryant', isbn='978-7-111-54493-7',
+                 publisher='机械工业出版社', category='计算机', total_quantity=2, available_quantity=2),
+            Book(title='三体', author='刘慈欣', isbn='978-7-5366-9293-0',
+                 publisher='重庆出版社', category='科幻', total_quantity=6, available_quantity=6),
+        ]
+        sample_readers = [
+            Reader(name='张三', phone='13800138001', email='zhangsan@example.com'),
+            Reader(name='李四', phone='13800138002', email='lisi@example.com'),
+            Reader(name='王五', phone='13800138003', email='wangwu@example.com'),
+        ]
+        for b in sample_books:
+            db.session.add(b)
+        for r in sample_readers:
+            db.session.add(r)
+        db.session.commit()
+
+
+# ==================== 登录认证 ====================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        user = User.query.filter_by(username=username).first()
+        if user and user.check_password(password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            flash('登录成功', 'success')
+            return redirect(url_for('index'))
+        flash('用户名或密码错误', 'danger')
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('已退出登录', 'info')
+    return redirect(url_for('login'))
+
+
 # ==================== 首页仪表盘 ====================
 
 @app.route('/')
+@login_required
 def index():
     total_books = Book.query.count()
     total_readers = Reader.query.count()
@@ -41,6 +114,7 @@ def index():
 # ==================== 图书管理 ====================
 
 @app.route('/books')
+@login_required
 def book_list():
     search = request.args.get('search', '').strip()
     category = request.args.get('category', '').strip()
@@ -65,6 +139,7 @@ def book_list():
 
 
 @app.route('/books/add', methods=['GET', 'POST'])
+@login_required
 def book_add():
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
@@ -99,6 +174,7 @@ def book_add():
 
 
 @app.route('/books/<int:book_id>/edit', methods=['GET', 'POST'])
+@login_required
 def book_edit(book_id):
     book = Book.query.get_or_404(book_id)
     if request.method == 'POST':
@@ -141,6 +217,7 @@ def book_edit(book_id):
 
 
 @app.route('/books/<int:book_id>/delete', methods=['POST'])
+@login_required
 def book_delete(book_id):
     book = Book.query.get_or_404(book_id)
     active = Borrow.query.filter_by(book_id=book_id, status='借阅中').count()
@@ -156,6 +233,7 @@ def book_delete(book_id):
 # ==================== 读者管理 ====================
 
 @app.route('/readers')
+@login_required
 def reader_list():
     search = request.args.get('search', '').strip()
     query = Reader.query
@@ -172,6 +250,7 @@ def reader_list():
 
 
 @app.route('/readers/add', methods=['GET', 'POST'])
+@login_required
 def reader_add():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -189,6 +268,7 @@ def reader_add():
 
 
 @app.route('/readers/<int:reader_id>/edit', methods=['GET', 'POST'])
+@login_required
 def reader_edit(reader_id):
     reader = Reader.query.get_or_404(reader_id)
     if request.method == 'POST':
@@ -208,6 +288,7 @@ def reader_edit(reader_id):
 
 
 @app.route('/readers/<int:reader_id>/delete', methods=['POST'])
+@login_required
 def reader_delete(reader_id):
     reader = Reader.query.get_or_404(reader_id)
     active = Borrow.query.filter_by(reader_id=reader_id, status='借阅中').count()
@@ -223,6 +304,7 @@ def reader_delete(reader_id):
 # ==================== 借阅管理 ====================
 
 @app.route('/borrows')
+@login_required
 def borrow_list():
     status_filter = request.args.get('status', '').strip()
     query = Borrow.query
@@ -236,6 +318,7 @@ def borrow_list():
 
 
 @app.route('/borrows/add', methods=['GET', 'POST'])
+@login_required
 def borrow_add():
     books = Book.query.filter(Book.available_quantity > 0).order_by(Book.title).all()
     readers = Reader.query.order_by(Reader.name).all()
@@ -273,6 +356,7 @@ def borrow_add():
 
 
 @app.route('/borrows/<int:borrow_id>/return', methods=['POST'])
+@login_required
 def borrow_return(borrow_id):
     borrow = Borrow.query.get_or_404(borrow_id)
     if borrow.status == '已归还':
@@ -289,6 +373,7 @@ def borrow_return(borrow_id):
 # ==================== 搜索 API ====================
 
 @app.route('/api/books/search')
+@login_required
 def api_book_search():
     q = request.args.get('q', '').strip()
     if not q:
@@ -339,8 +424,5 @@ def init_sample_data():
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        init_sample_data()
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
