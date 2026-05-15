@@ -1,4 +1,5 @@
 import os
+import random
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
@@ -66,19 +67,39 @@ with app.app_context():
 
 # ==================== 登录认证 ====================
 
+def generate_captcha():
+    a = random.randint(1, 20)
+    b = random.randint(1, 20)
+    op = random.choice(['+', '-', '*'])
+    if op == '+':
+        answer = a + b
+    elif op == '-':
+        answer = a - b
+    else:
+        answer = a * b
+    session['captcha_answer'] = answer
+    return f'{a} {op} {b} = ?'
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
+        captcha_input = request.form.get('captcha', '').strip()
+        captcha_answer = session.get('captcha_answer')
+        if not captcha_input or str(captcha_answer) != captcha_input:
+            flash('验证码错误', 'danger')
+            return render_template('login.html', captcha_text=generate_captcha())
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             session['user_id'] = user.id
             session['username'] = user.username
+            session.pop('captcha_answer', None)
             flash('登录成功', 'success')
             return redirect(url_for('index'))
         flash('用户名或密码错误', 'danger')
-    return render_template('login.html')
+    return render_template('login.html', captcha_text=generate_captcha())
 
 
 @app.route('/logout')
@@ -86,6 +107,30 @@ def logout():
     session.clear()
     flash('已退出登录', 'info')
     return redirect(url_for('login'))
+
+
+# ==================== 修改密码 ====================
+
+@app.route('/change-password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    if request.method == 'POST':
+        old_password = request.form.get('old_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        user = User.query.get(session['user_id'])
+        if not user or not user.check_password(old_password):
+            flash('原密码错误', 'danger')
+        elif len(new_password) < 4:
+            flash('新密码至少4位', 'danger')
+        elif new_password != confirm_password:
+            flash('两次输入的新密码不一致', 'danger')
+        else:
+            user.set_password(new_password)
+            db.session.commit()
+            flash('密码修改成功', 'success')
+            return redirect(url_for('index'))
+    return render_template('change_password.html')
 
 
 # ==================== 首页仪表盘 ====================
