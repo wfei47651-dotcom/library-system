@@ -67,18 +67,73 @@ with app.app_context():
 
 # ==================== 登录认证 ====================
 
-def generate_captcha():
-    a = random.randint(1, 20)
-    b = random.randint(1, 20)
-    op = random.choice(['+', '-', '*'])
-    if op == '+':
-        answer = a + b
-    elif op == '-':
-        answer = a - b
-    else:
-        answer = a * b
-    session['captcha_answer'] = answer
-    return f'{a} {op} {b} = ?'
+CAPTCHA_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
+
+
+def generate_captcha_code():
+    code = ''.join(random.choices(CAPTCHA_CHARS, k=4))
+    session['captcha_code'] = code
+    return code
+
+
+@app.route('/captcha')
+def captcha_image():
+    code = generate_captcha_code()
+    svg = _make_captcha_svg(code)
+    from flask import make_response
+    resp = make_response(svg)
+    resp.headers['Content-Type'] = 'image/svg+xml'
+    return resp
+
+
+def _make_captcha_svg(code):
+    import math
+    width, height = 140, 50
+    chars = list(code)
+    char_width = width // len(chars)
+
+    svg_parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="#f0f3f7" rx="4"/>',
+    ]
+
+    # Background noise - random lines
+    for _ in range(8):
+        x1 = random.randint(0, width)
+        y1 = random.randint(0, height)
+        x2 = random.randint(0, width)
+        y2 = random.randint(0, height)
+        color = random.choice(['#c0c8d4', '#d0d8e4', '#b0b8c4'])
+        svg_parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="{random.uniform(0.5,1.5)}"/>')
+
+    # Random dots
+    for _ in range(30):
+        cx = random.randint(0, width)
+        cy = random.randint(0, height)
+        r = random.uniform(0.5, 1.5)
+        color = random.choice(['#aab', '#bbc', '#99a'])
+        svg_parts.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{color}"/>')
+
+    # Characters
+    for i, ch in enumerate(chars):
+        x = i * char_width + char_width // 2 + random.randint(-6, 6)
+        y = height // 2 + random.randint(-4, 8)
+        rotation = random.randint(-25, 25)
+        font_size = random.randint(22, 30)
+        r = random.randint(20, 80)
+        g = random.randint(40, 120)
+        b = random.randint(60, 160)
+        color = f'rgb({r},{g},{b})'
+
+        svg_parts.append(
+            f'<text x="{x}" y="{y}" font-size="{font_size}" font-family="Arial, sans-serif" '
+            f'font-weight="bold" fill="{color}" text-anchor="middle" '
+            f'transform="rotate({rotation} {x} {y})" '
+            f'opacity="0.9">{ch}</text>'
+        )
+
+    svg_parts.append('</svg>')
+    return '\n'.join(svg_parts)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -86,20 +141,21 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        captcha_input = request.form.get('captcha', '').strip()
-        captcha_answer = session.get('captcha_answer')
-        if not captcha_input or str(captcha_answer) != captcha_input:
+        captcha_input = request.form.get('captcha', '').strip().upper()
+        captcha_code = session.get('captcha_code', '')
+        if not captcha_input or captcha_input != captcha_code:
+            session.pop('captcha_code', None)
             flash('验证码错误', 'danger')
-            return render_template('login.html', captcha_text=generate_captcha())
+            return render_template('login.html')
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             session['user_id'] = user.id
             session['username'] = user.username
-            session.pop('captcha_answer', None)
+            session.pop('captcha_code', None)
             flash('登录成功', 'success')
             return redirect(url_for('index'))
         flash('用户名或密码错误', 'danger')
-    return render_template('login.html', captcha_text=generate_captcha())
+    return render_template('login.html')
 
 
 @app.route('/logout')

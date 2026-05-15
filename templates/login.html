@@ -71,17 +71,16 @@
                             <div class="mb-3">
                                 <label class="form-label">验证码</label>
                                 <div class="d-flex align-items-center gap-2">
-                                    <div style="background: linear-gradient(135deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
-                                                border: 2px solid #ddd; border-radius: 6px; padding: 8px 16px;
-                                                font-size: 1.2rem; font-weight: bold; letter-spacing: 3px;
-                                                font-family: 'Courier New', monospace; user-select: none;
-                                                color: #333; min-width: 120px; text-align: center;">
-                                        {{ captcha_text }}
-                                    </div>
+                                    <img id="captchaImg" src="{{ url_for('captcha_image') }}"
+                                         onclick="this.src='{{ url_for('captcha_image') }}?'+new Date().getTime()"
+                                         style="border: 2px solid #ddd; border-radius: 6px; cursor: pointer; height: 50px;"
+                                         title="点击刷新验证码" alt="验证码">
                                     <input type="text" name="captcha" class="form-control"
-                                           placeholder="输入计算结果" required
-                                           style="max-width: 150px;" autocomplete="off">
+                                           placeholder="请输入验证码" required
+                                           style="max-width: 140px;" autocomplete="off"
+                                           maxlength="4">
                                 </div>
+                                <div class="form-text">点击图片可刷新验证码</div>
                             </div>
                             <button type="submit" class="btn btn-primary w-100 py-2">
                                 <i class="bi bi-box-arrow-in-right"></i> 登 录
